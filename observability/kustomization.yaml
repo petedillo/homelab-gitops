@@ -3,7 +3,6 @@ kind: Kustomization
 
 resources:
   - platform
-  - blog
   - pete-bot
   - web-search
   - mission-control
