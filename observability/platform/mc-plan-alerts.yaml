@@ -3,6 +3,12 @@ kind: PrometheusRule
 metadata:
   name: mc-plan-alerts
   namespace: observability
+  labels:
+    # Prometheus's ruleSelector (kube-prometheus-stack default) matches
+    # release: kube-prom-stack — without this the operator silently drops the
+    # rule and none of the alerts below ever load. The kustomization's
+    # layer: platform label is additive and does NOT satisfy the selector.
+    release: kube-prom-stack
 spec:
   groups:
   - name: mc-plan.rules

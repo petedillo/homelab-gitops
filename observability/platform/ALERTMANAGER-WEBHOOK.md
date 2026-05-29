@@ -99,8 +99,15 @@ Shipped in this directory (PB.13/PB.16, 2026-05-28):
       Alertmanager half.
 - [x] **PrometheusRule (real, in-cluster)** — `mc-plan-alerts.yaml`:
       `MCBackendDown`, `MCNotificationServiceDown`, `MCArgoCDUnreachable`,
-      `WebSearchServiceDown`. These fire on series that exist today and route
-      end-to-end to a Discord card.
+      `WebSearchServiceDown`. These fire on series that exist today. **The rule
+      MUST carry `metadata.labels.release: kube-prom-stack`** — Prometheus's
+      `ruleSelector` (kube-prometheus-stack default) matches that label, and the
+      operator silently drops any PrometheusRule that lacks it. The
+      kustomization's `layer: platform` label is additive and does NOT satisfy
+      the selector. (This bit the first cut — see Verification results below.)
+      Note: `prometheus-rules.yaml` (`infrastructure-alerts`) has the same
+      latent gap and has likewise never loaded; left as-is here to avoid
+      activating unvalidated node/disk alerts in this change.
 
 Still out of scope / follow-ups:
 
@@ -121,6 +128,37 @@ Still out of scope / follow-ups:
 - [ ] Snooze proper: the current `snooze_1h` action dismisses the plan instead
       of re-presenting after 1h. Track as a retro candidate; requires a new
       lifecycle hook (e.g., a delayed `pending` re-entry or a snooze table).
+
+## Verification results (2026-05-28, commit `0139ac7` + label fix)
+
+End-to-end test of the shipped path. **Config + auth + handler: all correct.
+Live delivery: blocked by an infra CNI outage, not by this wiring.**
+
+Verified GREEN:
+- ArgoCD synced the `observability` app to `0139ac7` (`Synced|Healthy`).
+- SealedSecret `mc-webhook-am-token` decrypted; bearer token is byte-identical
+  across the AM-config credentials, the unsealed Secret, and MC backend's
+  `ALERTMANAGER_WEBHOOK_TOKEN` (64 chars; values never printed).
+- AlertmanagerConfig merged into the live generated AM config — receiver,
+  `notify="mc-plan"` route matcher, and webhook URL all present. (The
+  `alertmanagerConfigSelector` is empty `{}` = match-all, which is why the CR
+  merged even though the PrometheusRule was being dropped — selector asymmetry.)
+- MC webhook handler (`POST /api/v1/alerts/alertmanager`) is correct and
+  idempotent — direct (localhost) test: firing → `created:1`, re-fire →
+  `skipped:1`, resolved → `resolved:1` (plan `pl_10b0999314b3`).
+
+Defects found:
+1. **PrometheusRule label** (FIXED in this commit): `mc-plan-alerts` lacked
+   `release: kube-prom-stack`, so Prometheus never loaded the four alerts. Added.
+2. **BLOCKER — Calico routing on k8s-node2 (Workstream B).** Alertmanager
+   cannot reach MC backend at all: from inside the AM pod, MC's pod IP,
+   Service ClusterIP, and DNS name all time out (and the reverse direction
+   too). Even same-node pod-to-pod is dead. `calico-node` on k8s-node2 has
+   restarted 7×; CoreDNS + calico-kube-controllers run only on node1; AM + MC
+   are both on node2. This is the chronic Calico failure the k8s-node1/node2
+   rebuild (Workstream B) is meant to fix. **Until that lands, AM-routed
+   alerts cannot become Plans regardless of correct config.** The wiring above
+   is ready and will work end-to-end once node networking is healthy.
 
 ## Verification path (when cluster wiring lands)
 
