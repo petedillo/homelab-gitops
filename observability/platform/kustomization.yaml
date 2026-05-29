@@ -5,6 +5,9 @@ namespace: observability
 
 resources:
   - prometheus-rules.yaml
+  - mc-plan-alerts.yaml
+  - mc-plan-alertmanager-config.yaml
+  - mc-webhook-am-token-sealedsecret.yaml
   - grafana-ingress.yaml
   - network-policies.yaml
 

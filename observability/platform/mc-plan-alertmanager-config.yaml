@@ -1,0 +1,40 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: mc-plan-service
+  namespace: observability
+spec:
+  # Routes alerts carrying `notify: mc-plan` to the MC Backend webhook, which
+  # turns each into a PB v2 Plan (kind=alert) and fans out a Discord card.
+  # The Prometheus operator prepends a `namespace=observability` matcher
+  # (OnNamespace strategy), so opted-in alerts must be authored in this ns.
+  route:
+    receiver: mc-plan-service
+    groupBy: ['alertname', 'service']
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 12h
+    matchers:
+    - name: notify
+      value: mc-plan
+      matchType: '='
+    routes:
+    - receiver: mc-plan-service
+      matchers:
+      - name: severity
+        value: critical
+        matchType: '='
+      groupWait: 10s
+      repeatInterval: 1h
+  receivers:
+  - name: mc-plan-service
+    webhookConfigs:
+    - url: http://mission-control-backend.mission-control.svc.cluster.local:3000/api/v1/alerts/alertmanager
+      sendResolved: true
+      maxAlerts: 0
+      httpConfig:
+        authorization:
+          type: Bearer
+          credentials:
+            name: mc-webhook-am-token
+            key: token

@@ -1,0 +1,58 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mc-plan-alerts
+  namespace: observability
+spec:
+  groups:
+  - name: mc-plan.rules
+    interval: 30s
+    rules:
+    # Alerts in this group opt into MC Plan delivery via the `notify: mc-plan`
+    # label, matched by the mc-plan-service AlertmanagerConfig. `namespace:
+    # observability` satisfies the operator's OnNamespace matcher strategy.
+    - alert: MCBackendDown
+      expr: up{job="mission-control-backend"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        namespace: observability
+        notify: mc-plan
+        service: mission-control-backend
+      annotations:
+        summary: "Mission Control Backend is down"
+        description: "Prometheus target mission-control-backend has been unreachable for >2m. The control plane (plans, roadmap, agent dispatch, webhooks) is offline."
+        runbook_url: "https://mc.pdlab.dev/roadmap"
+    - alert: MCNotificationServiceDown
+      expr: up{job="notification-service"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        namespace: observability
+        notify: mc-plan
+        service: notification-service
+      annotations:
+        summary: "Pete Bot (notification-service) is down"
+        description: "Prometheus target notification-service has been unreachable for >2m. Alert/plan delivery to Discord is offline, so subsequent failures will go unseen."
+    - alert: MCArgoCDUnreachable
+      expr: mission_control_argocd_available == 0
+      for: 5m
+      labels:
+        severity: warning
+        namespace: observability
+        notify: mc-plan
+        service: argocd
+      annotations:
+        summary: "Mission Control cannot reach the ArgoCD API"
+        description: "mission_control_argocd_available has been 0 for >5m. GitOps sync state is unknown to the control plane; ArgoCD or its API may be degraded."
+    - alert: WebSearchServiceDown
+      expr: up{job="web-search-service"} == 0
+      for: 5m
+      labels:
+        severity: warning
+        namespace: observability
+        notify: mc-plan
+        service: web-search-service
+      annotations:
+        summary: "Web Search service is down"
+        description: "Prometheus target web-search-service has been unreachable for >5m. research-agent's web-search step will fail."
